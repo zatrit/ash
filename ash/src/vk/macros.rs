@@ -1,10 +1,13 @@
 #[macro_export]
 macro_rules! vk_bitflags_wrapped {
     ($ name : ident , $ flag_type : ty) => {
-        impl Default for $name {
+       impl Default for $name {
             fn default() -> Self {
                 Self(0)
             }
+        }
+        impl ::const_default::ConstDefault for $name {
+            const DEFAULT: Self = Self::empty();
         }
         impl $name {
             #[inline]
@@ -88,7 +91,7 @@ macro_rules! handle_nondispatchable {
     };
     ($ name : ident , $ ty : ident , $ doc_link : meta) => {
         #[repr(transparent)]
-        #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Hash, Default)]
+        #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Hash, Default, ::const_default::ConstDefault)]
         #[$doc_link]
         pub struct $name(u64);
         impl Handle for $name {
@@ -131,6 +134,9 @@ macro_rules! define_handle {
             fn default() -> Self {
                 Self::null()
             }
+        }
+        impl ::const_default::ConstDefault for $name {
+            const DEFAULT: Self = Self::null();
         }
         impl Handle for $name {
             const TYPE: ObjectType = ObjectType::$ty;

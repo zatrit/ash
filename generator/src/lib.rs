@@ -1755,7 +1755,7 @@ pub fn generate_enum<'a>(
 
         let impl_block = bitflags_impl_block(ident.clone(), name, &constants);
         let enum_quote = quote! {
-            #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+            #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, ::const_default::ConstDefault)]
             #[repr(transparent)]
             #[doc = #khronos_link]
             #struct_attribute
@@ -1771,7 +1771,6 @@ pub fn generate_enum<'a>(
         let q = quote! {
             #enum_quote
             #special_quote
-
         };
         EnumType::Enum(q)
     }
@@ -1863,43 +1862,46 @@ fn derive_default(
     if !(contains_ptr || contains_structure_type || contains_static_array) {
         return None;
     };
-    let default_fields = members.iter().map(|member| {
-        let param_ident = member.vkxml_field.param_ident();
-        if is_structure_type(member.vkxml_field) {
-            if member.vkxml_field.type_enums.is_some() {
-                quote!(#param_ident: Self::STRUCTURE_TYPE)
-            } else {
+    let default_fields = members
+        .iter()
+        .map(|member| {
+            let param_ident = member.vkxml_field.param_ident();
+            if is_structure_type(member.vkxml_field) {
+                if member.vkxml_field.type_enums.is_some() {
+                    quote!(#param_ident: Self::STRUCTURE_TYPE)
+                } else {
+                    quote!(#param_ident: unsafe { ::core::mem::zeroed() })
+                }
+            } else if member.vkxml_field.reference.is_some() {
+                if member.vkxml_field.is_const {
+                    quote!(#param_ident: ::core::ptr::null())
+                } else {
+                    quote!(#param_ident: ::core::ptr::null_mut())
+                }
+            } else if is_static_array(member.vkxml_field)
+                || handles.contains(&member.vkxml_field.basetype.as_str())
+            {
                 quote!(#param_ident: unsafe { ::core::mem::zeroed() })
-            }
-        } else if member.vkxml_field.reference.is_some() {
-            if member.vkxml_field.is_const {
-                quote!(#param_ident: ::core::ptr::null())
             } else {
-                quote!(#param_ident: ::core::ptr::null_mut())
+                quote!(
+                    #param_ident: ::const_default::ConstDefault::DEFAULT
+                )
             }
-        } else if is_static_array(member.vkxml_field)
-            || handles.contains(&member.vkxml_field.basetype.as_str())
-        {
-            quote!(#param_ident: unsafe { ::core::mem::zeroed() })
-        } else {
-            let ty = member.vkxml_field.type_tokens(false, None);
-            quote!(#param_ident: #ty::default())
-        }
-    });
+        })
+        .collect::<Vec<TokenStream>>();
     let lifetime = has_lifetime.then(|| quote!(<'_>));
     let marker = has_lifetime.then(|| quote!(_marker: PhantomData,));
     let q = quote! {
         impl ::core::default::Default for #name #lifetime {
             #[inline]
             fn default() -> Self {
-                #allow_deprecated
-                Self {
-                    #(
-                        #default_fields,
-                    )*
-                    #marker
-                }
+                <Self as ::const_default::ConstDefault>::DEFAULT
             }
+        }
+
+        impl ::const_default::ConstDefault for #name #lifetime {
+            #allow_deprecated
+            const DEFAULT: Self = Self { #( #default_fields, )* #marker };
         }
     };
     Some(q)
@@ -2572,7 +2574,7 @@ pub fn generate_struct(
         quote!()
     };
     let default_str = if default_tokens.is_none() {
-        quote!(Default,)
+        quote!(Default, ::const_default::ConstDefault,)
     } else {
         quote!()
     };
@@ -2669,8 +2671,12 @@ fn generate_union(union: &vkxml::Union, has_lifetimes: &HashSet<Ident>) -> Token
         impl #lifetime ::core::default::Default for #name #lifetime {
             #[inline]
             fn default() -> Self {
-                unsafe { ::core::mem::zeroed() }
+                ::const_default::ConstDefault::DEFAULT
             }
+        }
+
+        impl #lifetime ::const_default::ConstDefault for #name #lifetime {
+            const DEFAULT: Self = unsafe { ::core::mem::zeroed() };
         }
     }
 }

@@ -22,6 +22,7 @@ edition = "2021"
 rust-version = "1.69.0"
 
 [dependencies]
+const-default = { version = "1.0.0", default-features = false, features = ["derive"] }
 libloading = { version = "0.8", optional = true }
 
 [features]
@@ -33,7 +34,7 @@ loaded = ["libloading", "std"]
 # Whether Vulkan structs should implement Debug.
 debug = []
 # Whether the standard library should be required
-std = []
+std = ["const-default/std"]
 
 [package.metadata.release]
 no-dev-version = true
